@@ -1,0 +1,73 @@
+{
+  "6mm_TZe": {
+    "name": "6mm TZe",
+    "width_mm": 6,
+    "stripe_size": 100,
+    "printer_media_code": 6,
+    "dpi": 360,
+    "y_offset": 0
+  },
+
+  "9mm_TZe": {
+    "name": "9mm TZe",
+    "width_mm": 9,
+    "stripe_size": 150,
+    "printer_media_code": 9,
+    "dpi": 360,
+    "y_offset": 0
+  },
+  
+  "12mm_TZe": {
+    "name": "12mm TZe",
+    "width_mm": 12,
+    "stripe_size": 208,
+    "printer_media_code": 12,
+    "dpi": 180,
+    "y_offset": 60
+  },
+
+  "12mm_HGe": {
+    "name": "12mm HGe",
+    "width_mm": 12,
+    "stripe_size": 208,
+    "printer_media_code": 12,
+    "dpi": 360,
+    "y_offset": 500
+  },
+
+  "18mm_TZe": {
+    "name": "18mm TZe",
+    "width_mm": 18,
+    "stripe_size": 312,
+    "printer_media_code": 18,
+    "dpi": 360,
+    "y_offset": 0
+  },
+
+  "24mm_TZe": {
+    "name": "24mm TZe",
+    "width_mm": 24,
+    "stripe_size": 416,
+    "printer_media_code": 24,
+    "dpi": 360,
+    "y_offset": 0
+  },
+
+  "36mm_TZe": {
+    "name": "36mm TZe",
+    "width_mm": 36,
+    "stripe_size": 536,
+    "printer_media_code": 36,
+    "dpi": 360,
+    "y_offset": 0
+  },
+  
+  "12mm_HSe": {
+    "name": "12mm Heat Shrink",
+    "width_mm": 12,
+    "stripe_size": 208,
+    "printer_media_code": 12,
+    "dpi": 360,
+    "y_offset": 0
+  }
+}

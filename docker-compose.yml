@@ -1,0 +1,12 @@
+services:
+  labelprinter:
+    build: .
+    container_name: labelprinter
+    restart: unless-stopped
+    ports:
+      - "8765:8000"
+    environment:
+      - PRINTER_IP=192.168.10.110
+      - PRINTER_PORT=9100
+    volumes:
+      - ./data:/app/data:ro

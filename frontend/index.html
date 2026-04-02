@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Label Printer</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <rect x="1" y="4" width="12" height="6" rx="1" fill="currentColor"/>
+        <rect x="3" y="2" width="2" height="2" rx="0.5" fill="currentColor"/>
+        <rect x="9" y="2" width="2" height="2" rx="0.5" fill="currentColor"/>
+      </svg>
+    </div>
+    LABELPRINTER
+  </div>
+  <div class="header-right">
+    <div class="status-pill" onclick="openStatusModal()" title="Printer status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText" style="font-family:var(--mono);font-size:11px">—</span>
+    </div>
+    <a href="#" class="btn-link" id="printerLink" target="_blank">open printer UI ↗</a>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- Left panel: editor -->
+  <div class="panel-left">
+
+    <!-- Global settings -->
+    <div class="panel-section">
+      <div class="panel-section-title">Label Setup</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Tape Profile</label>
+          <select id="tapeProfile" onchange="onStateChange()">
+            <option value="">Loading…</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Label Rotation</label>
+          <select id="labelRotation" onchange="onStateChange()">
+            <option value="0">0° (normal)</option>
+            <option value="90">90°</option>
+            <option value="180">180°</option>
+            <option value="270">270° (cable)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Min Width (px)</label>
+          <input type="number" id="minLabelWidth" value="0" min="0" step="10" onchange="onStateChange()">
+        </div>
+        <div class="field">
+          <label>Margins T/B (px)</label>
+          <div style="display:flex;gap:4px">
+            <input type="number" id="topMargin" value="8" min="0" max="200" onchange="onStateChange()" style="width:50%">
+            <input type="number" id="bottomMargin" value="8" min="0" max="200" onchange="onStateChange()" style="width:50%">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row/cell editor -->
+    <div class="panel-section-title" style="padding:12px 16px 4px">
+      <span>Grid</span>
+      <button class="btn btn-secondary btn-sm" style="float:right;margin-top:-2px" onclick="addRow()">+ Row</button>
+    </div>
+    <div class="panel-scroll" id="gridEditor">
+      <!-- rows injected here -->
+    </div>
+
+  </div>
+
+  <!-- Right panel: preview + print -->
+  <div class="panel-right">
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('preview', this)">PREVIEW</div>
+      <div class="tab" onclick="switchTab('batch', this)">BATCH PRINT</div>
+    </div>
+
+    <!-- Preview tab -->
+    <div class="tab-panel active" id="tab-preview">
+      <div class="preview-area">
+        <div class="preview-spinner" id="previewSpinner">rendering…</div>
+        <div class="preview-wrap">
+          <div class="preview-label">Label Preview</div>
+          <div class="preview-img-wrap">
+            <img id="previewImg" src="" alt="preview">
+          </div>
+          <div class="preview-dims" id="previewDims">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Batch tab -->
+    <div class="tab-panel" id="tab-batch">
+      <div class="batch-panel">
+        <div class="batch-info">
+          Paste one label per line, or paste a JSON array of strings.<br>
+          The current label template is used — each line replaces the first text cell.<br>
+          Example: <code style="color:var(--amber)">["eth0","eth1","eth2"]</code> or one per line.
+        </div>
+        <textarea class="batch-textarea" id="batchInput" placeholder="cable-01&#10;cable-02&#10;cable-03&#10;..."></textarea>
+        <div class="btn-row">
+          <button class="btn btn-secondary" onclick="batchPreview()">Preview First</button>
+          <button class="btn btn-primary" onclick="batchPrint()">Print All</button>
+          <span id="batchStatus" style="font-family:var(--mono);font-size:11px;color:var(--muted);align-self:center"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Print bar -->
+    <div class="print-bar">
+      <div class="print-bar-group">
+        <span class="print-bar-label">Copies</span>
+        <input type="number" id="copies" value="1" min="1" max="999" style="width:64px">
+      </div>
+      <div class="print-bar-group">
+        <span class="print-bar-label">Cut</span>
+        <select id="cutMode" style="width:100px">
+          <option value="full">Full cut</option>
+          <option value="half">Half cut</option>
+          <option value="none">No cut</option>
+        </select>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-secondary" onclick="updatePreview()">↺ Preview</button>
+      <button class="btn btn-primary" onclick="doPrint()">⎙ Print</button>
+    </div>
+  </div>
+</div>
+
+<!-- Status modal -->
+<div class="modal-overlay" id="statusModal" onclick="if(event.target===this)closeStatusModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">PRINTER STATUS</div>
+      <div class="modal-close" onclick="closeStatusModal()">✕</div>
+    </div>
+    <div class="modal-body" id="statusModalBody">Loading…</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
