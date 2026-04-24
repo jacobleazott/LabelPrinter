@@ -1,20 +1,65 @@
-"""
-Brother P-touch raster protocol implementation.
-"""
-
 from __future__ import annotations
 
 import socket
 import struct
-import os
-from typing import Iterator
+import time
+import sys
+from pathlib import Path
+from typing import Dict, Any, Optional
+
 from PIL import Image
 
 
-# ── Raster byte generation ───────────────────────────────────────────────────
+PROFILES_PATH = Path(__file__).parent.parent / "data" / "tapes.json"
+
+
+def load_profiles() -> Dict[str, Dict[str, Any]]:
+    import json
+    with open(PROFILES_PATH) as f:
+        return json.load(f)
+
+
+def _get_profile_value(profile: Dict[str, Any], *names: str, default=None):
+    for name in names:
+        if name in profile:
+            return profile[name]
+    return default
+
+
+def _apply_vertical_padding(img, pad_top=0, pad_bottom=0):
+    pad_top = int(pad_top or 0)
+    pad_bottom = int(pad_bottom or 0)
+
+    if pad_top == 0 and pad_bottom == 0:
+        return img
+
+    canvas = Image.new(
+        "RGB",
+        (img.width, img.height + pad_top + pad_bottom),
+        (255, 255, 255),
+    )
+    canvas.paste(img, (0, pad_top))
+    return canvas
+
+
+def _media_setup_bytes(profile: Dict[str, Any]) -> bytes:
+    media_type_byte = int(
+        _get_profile_value(profile, "media_type_byte", "media_init_byte")
+    )
+    media_width_byte = int(
+        _get_profile_value(profile, "media_width_byte", "media_width_code")
+    )
+
+    return bytes([
+        0x1B, 0x69, 0x63,
+        media_type_byte,
+        0x01,
+        media_width_byte,
+        0x00, 0x00,
+    ])
+
 
 def _raw_row(img: Image.Image, img_pixels, stripe_count: int, x: int, y_offset: int) -> bytes:
-    """Convert one column (x) of the image into stripe_count bytes."""
     row = bytearray(stripe_count)
     for stripe_idx in range(stripe_count):
         byte = 0
@@ -32,120 +77,124 @@ def _raw_row(img: Image.Image, img_pixels, stripe_count: int, x: int, y_offset: 
     return bytes(row)
 
 
+def _compress_tiff(row):
+    pos = 0
+    uncompressed_start = pos
+    while pos < len(row):
+        count = 0
+        while pos + count + 1 < len(row) and row[pos + count + 1] == row[pos + count]:
+            count += 1
+
+        if count > 0:
+            if uncompressed_start < pos:
+                yield struct.pack("!b", pos - uncompressed_start - 1) + row[uncompressed_start:pos]
+            yield struct.pack("!bB", -count, row[pos])
+            pos += count + 1
+            uncompressed_start = pos
+        else:
+            pos += 1
+
+    if uncompressed_start < pos:
+        yield struct.pack("!b", pos - uncompressed_start - 1) + row[uncompressed_start:pos]
+
+
 def _generate_raster(
     img: Image.Image,
-    stripe_size: int,
-    media_width_mm: int,
-    top_margin: int = 8,
-    bottom_margin: int = 8,
+    profile: Dict[str, Any],
     cut_mode: str = "full",
-    y_offset: int = 0,
 ) -> bytes:
     """
     Generate Brother raster data for a PT-9800PCN.
 
-    img:            PIL Image (width=label_length, height≤stripe_size)
-    stripe_size:    Total printable dots across tape width
-    media_width_mm: Tape width in mm (sent in init packet)
-    top_margin:     Empty lines before image (pixels)
-    bottom_margin:  Empty lines after image (pixels)
-    cut_mode:       "full", "half", "none"
+    Profile fields used:
+        stripe_size
+        media_type_byte   (or media_init_byte)
+        media_width_byte  (or media_width_code)
+        content_pad_top_dots
+        content_pad_bottom_dots
+        mode_byte         (optional)
     """
-
-    import sys
-    print(f"DEBUG: stripe_size={stripe_size} img.size={img.size}", file=sys.stderr)
-    
-    # 9800PCN has a cut correction: the cut comes ~8px after the cut command
-    CUT_CORRECTION = 8
+    stripe_size = int(profile["stripe_size"])
 
     if img.mode != "RGB":
         img = img.convert("RGB")
 
+    print(f"DEBUG: img.height {img.height} img.width {img.width}")
+    # Per-tape calibration padding.
+    img = _apply_vertical_padding(
+        img,
+        pad_top=int(profile.get("content_pad_top_dots", 0)),
+        pad_bottom=int(profile.get("content_pad_bottom_dots", 0)),
+    )
+
+    print(f"DEBUG: img.height {img.height} img.width {img.width}")
+
     pixels = img.load()
-    assert stripe_size % 8 == 0
-    stripe_count = stripe_size // 8
+    # assert img.height % 8 == 0
+    stripe_count = img.height // 8
 
-    # Offset to center image vertically in the stripe, plus profile-level physical correction
-    y_offset = (stripe_size - img.height) + y_offset
-
-    # Mode byte: bit6=auto-cut, bit7=mirror
-    mode_byte = 0x40 if cut_mode == "full" else 0x00
+    # Leave this data-driven too, in case you later need per-tape cut/mirror behavior.
+    mode_byte = int(profile.get("mode_byte", 0x00))
 
     buf = bytearray()
-
-    # Sync
     buf += b"\x00" * 200
 
-    # Init sequence
-    buf += b"\x1b@"          # ESC @ — initialize
+    buf += b"\x1b@"          # ESC @
     buf += b"\x1bia\x01"     # raster mode
-    buf += bytes([0x1b, 0x69, 0x4d, mode_byte])  # ESC i M — mode settings
-    buf += b"\x1bid\x00\x00" # margin = 0
+    buf += bytes([0x1B, 0x69, 0x4D, mode_byte])
+    buf += b"\x1bid\x00\x00"  # feed margin = 0 for now
 
-    # 9800PCN-specific media setup
-    # \x8e = media type flags; \x01 = unknown; media_width_mm; \x00\x00
-    buf += bytes([0x1b, 0x69, 0x63, 0x8e, 0x01, media_width_mm, 0x00, 0x00])
+    media_type_byte = int(profile.get("media_type_byte", 0x8e))
+    media_width_byte = int(profile.get("media_width_byte", 0x18))
 
-    # Feed correction
-    buf += b"\x1bid\x00\x00"
+    buf += bytes([0x1B, 0x69, 0x63, media_type_byte, 0x01, media_width_byte, 0x00, 0x00])
 
-    # Compression: none
-    buf += b"\x4d\x00"  # M \x00
+    buf += b"\x1bid\x00\x00"  # feed correction
+    buf += b"\x4d\x02"        # TIFF compression
 
-    # Top margin (empty lines, accounting for cut correction)
-    effective_top = max(0, top_margin - CUT_CORRECTION)
-    buf += b"Z" * effective_top
-
-    # Raster data — one column at a time
+    # Raster data — one column at a time, which is what your working pipeline expects.
     for x in range(img.width):
-        row = _raw_row(img, pixels, stripe_count, x, y_offset)
-        buf += b"G" + struct.pack("<H", len(row)) + row
+        row = _raw_row(img, pixels, stripe_count, x, y_offset=0)
+        compressed = b"".join(_compress_tiff(row))
+        buf += b"G" + struct.pack("<H", len(compressed)) + compressed
 
-    # Bottom margin
-    buf += b"Z" * (bottom_margin + CUT_CORRECTION)
-
-    # Print / eject
-    if cut_mode == "half":
-        buf += b"\x1bi\x64\x01"  # half cut command (may need tuning per firmware)
     buf += b"\x1a"
 
     return bytes(buf)
 
 
-# ── Network send ─────────────────────────────────────────────────────────────
-
-def send_to_printer(data: bytes, ip: str, port: int = 9100, timeout: float = 10.0) -> None:
+def send_to_printer(data: bytes, ip: str, port: int = 9100, timeout: float = 30.0) -> None:
+    print(f"DEBUG: compressed raster bytes={len(data)}", file=sys.stderr)
     with socket.create_connection((ip, port), timeout=timeout) as sock:
-        sock.sendall(data)
+        CHUNK_SIZE = 4096
+        for i in range(0, len(data), CHUNK_SIZE):
+            sock.sendall(data[i:i + CHUNK_SIZE])
+            time.sleep(0.01)
+        sock.shutdown(socket.SHUT_WR)
+        time.sleep(2)
 
-
-# ── High-level print ─────────────────────────────────────────────────────────
 
 def print_label(
     img: Image.Image,
-    stripe_size: int,
-    media_width_mm: int,
+    tape_profile_key: str,
     ip: str,
     port: int = 9100,
-    top_margin: int = 8,
-    bottom_margin: int = 8,
-    cut_mode: str = "full",
     copies: int = 1,
-    y_offset: int = 0,
+    cut_mode: str = "full",
 ) -> None:
-    """Render and send one or more copies of a label to the printer."""
+    profiles = load_profiles()
+    if tape_profile_key not in profiles:
+        raise KeyError(f"Unknown tape profile: {tape_profile_key}")
+
+    profile = profiles[tape_profile_key]
     data = _generate_raster(
         img=img,
-        stripe_size=stripe_size,
-        media_width_mm=media_width_mm,
-        top_margin=top_margin,
-        bottom_margin=bottom_margin,
+        profile=profile,
         cut_mode=cut_mode,
-        y_offset=y_offset,
     )
+
     for _ in range(copies):
         send_to_printer(data, ip, port)
-
 
 # ── Printer status ───────────────────────────────────────────────────────────
 

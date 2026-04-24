@@ -61,6 +61,15 @@
     "dpi": 360,
     "y_offset": 0
   },
+
+  "36mm_HGe": {
+    "name": "36mm HGe",
+    "width_mm": 36,
+    "stripe_size": 1080,
+    "printer_media_code": 36,
+    "dpi": 360,
+    "y_offset": 0
+  },
   
   "12mm_HSe": {
     "name": "12mm Heat Shrink",

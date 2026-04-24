@@ -18,7 +18,7 @@ from .models import BatchPrintRequest, LabelSpec
 from .renderer import font_index, label_to_png_bytes, load_profiles, render_label
 from .printer import get_printer_status, print_label
 
-PRINTER_IP = os.environ.get("PRINTER_IP", "192.168.10.110")
+PRINTER_IP = os.environ.get("PRINTER_IP", "192.168.20.208")
 PRINTER_PORT = int(os.environ.get("PRINTER_PORT", "9100"))
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -75,15 +75,16 @@ async def print_endpoint(spec: LabelSpec):
         img = render_label(spec.model_dump())
         print_label(
             img=img,
-            stripe_size=profile["stripe_size"],
-            media_width_mm=profile["width_mm"],
+            tape_profile_key=profile_key,
+            #stripe_size=profile["stripe_size"],
+            #media_width_mm=profile["width_mm"],
             ip=PRINTER_IP,
             port=PRINTER_PORT,
-            top_margin=spec.top_margin,
-            bottom_margin=spec.bottom_margin,
+            #top_margin=spec.top_margin,
+            #bottom_margin=spec.bottom_margin,
             cut_mode=spec.cut_mode,
             copies=spec.copies,
-            y_offset=profile.get("y_offset", 0),
+            #y_offset=profile.get("y_offset", 0),
         )
         return {"ok": True, "message": f"Sent {spec.copies} label(s) to {PRINTER_IP}"}
     except Exception as e:
