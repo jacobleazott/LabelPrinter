@@ -17,7 +17,7 @@ COPY frontend/ ./frontend/
 COPY data/ ./data/
 
 # Printer connection
-ENV PRINTER_IP=192.168.20.208
+ENV PRINTER_IP=192.168.20.110
 ENV PRINTER_PORT=9100
 
 EXPOSE 8000

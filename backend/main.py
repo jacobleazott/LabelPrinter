@@ -18,7 +18,7 @@ from .models import BatchPrintRequest, LabelSpec
 from .renderer import font_index, label_to_png_bytes, load_profiles, render_label
 from .printer import get_printer_status, print_label
 
-PRINTER_IP = os.environ.get("PRINTER_IP", "192.168.20.208")
+PRINTER_IP = os.environ.get("PRINTER_IP", "192.168.20.110")
 PRINTER_PORT = int(os.environ.get("PRINTER_PORT", "9100"))
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
